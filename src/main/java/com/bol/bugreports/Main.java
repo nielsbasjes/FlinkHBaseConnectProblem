@@ -1,9 +1,9 @@
 package com.bol.bugreports;
 
 import org.apache.flink.addons.hbase.AbstractTableInputFormat;
-import org.apache.flink.addons.hbase.TableInputFormat;
-import org.apache.flink.api.java.tuple.Tuple1;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Result;
@@ -11,13 +11,17 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.Map;
+
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Main {
   private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
   public static void main(String[] args) throws Exception {
-    printZookeeperConfig();
+    printHBaseConfig(HBaseConfiguration.create());
     final StreamExecutionEnvironment env = StreamExecutionEnvironment
       .getExecutionEnvironment()
       .setParallelism(1);
@@ -25,9 +29,27 @@ public class Main {
     env.execute("HBase config problem");
   }
 
-  public static void printZookeeperConfig() {
-    String zookeeper = HBaseConfiguration.create().get("hbase.zookeeper.quorum");
-    LOG.info("----> Loading HBaseConfiguration: Zookeeper = {}", zookeeper);
+  public static void printHBaseConfig(Configuration conf) {
+    Map<String, String> env = System.getenv();
+    LOG.info("--> ENVIRONMENT");
+    for (String envName : env.keySet()) {
+      LOG.info("{} = {}",
+        envName,
+        env.get(envName));
+    }
+
+    LOG.info("--> HBaseConfiguration: Zookeeper (from: {}) = {} ", conf.get("hbase.zookeeper.quorum"), conf.getPropertySources("hbase.zookeeper.quorum"));
+
+    ClassLoader classLoader = conf.getClassLoader();
+    if (classLoader instanceof URLClassLoader) {
+      URL[] urls = ((URLClassLoader)classLoader).getURLs();
+      LOG.info("--> HBaseConfiguration: URLClassLoader = {}", classLoader.toString());
+      for (URL url: urls) {
+        LOG.info("----> ClassPath = {}", url.toString());
+      }
+    } else {
+      LOG.info("--> HBaseConfiguration: ClassLoader = {}", classLoader.toString());
+    }
   }
 
   public static class HBaseSource extends AbstractTableInputFormat<String> {
@@ -42,8 +64,10 @@ public class Main {
     private HTable createTable() {
       LOG.info("Initializing HBaseConfiguration");
       // Uses files found in the classpath
+      LOG.info("=================================================================================");
       org.apache.hadoop.conf.Configuration hConf = HBaseConfiguration.create();
-      printZookeeperConfig();
+      printHBaseConfig(hConf);
+      LOG.info("=================================================================================");
 
       try {
         return new HTable(hConf, getTableName());
